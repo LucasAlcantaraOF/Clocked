@@ -79,10 +79,19 @@ const electronAPI = {
   }
 };
 const api = {
+  // Sistema de Events
+  createEvent: (eventData) => electron.ipcRenderer.invoke("create-event", eventData),
+  updateEvent: (eventId, eventData) => electron.ipcRenderer.invoke("update-event", eventId, eventData),
+  cancelEvent: (eventId) => electron.ipcRenderer.invoke("cancel-event", eventId),
+  getEvent: (eventId) => electron.ipcRenderer.invoke("get-event", eventId),
+  getAllEvents: () => electron.ipcRenderer.invoke("get-all-events"),
+  deleteEvent: (eventId) => electron.ipcRenderer.invoke("delete-event", eventId),
+  // Compatibilidade (mantido para código antigo)
   scheduleShutdown: (targetTime) => electron.ipcRenderer.invoke("schedule-shutdown", targetTime),
   cancelShutdown: () => electron.ipcRenderer.invoke("cancel-shutdown"),
   getScheduledTime: () => electron.ipcRenderer.invoke("get-scheduled-time"),
   checkWindowsShutdown: () => electron.ipcRenderer.invoke("check-windows-shutdown"),
+  // Window controls
   windowClose: () => electron.ipcRenderer.invoke("window-close"),
   windowMinimize: () => electron.ipcRenderer.invoke("window-minimize")
 };

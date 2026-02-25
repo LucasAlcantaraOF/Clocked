@@ -3,10 +3,21 @@ import { electronAPI } from '@electron-toolkit/preload'
 
 // Custom APIs for renderer
 const api = {
+  // Sistema de Events
+  createEvent: (eventData: any) => ipcRenderer.invoke('create-event', eventData),
+  updateEvent: (eventId: string, eventData: any) => ipcRenderer.invoke('update-event', eventId, eventData),
+  cancelEvent: (eventId: string) => ipcRenderer.invoke('cancel-event', eventId),
+  getEvent: (eventId: string) => ipcRenderer.invoke('get-event', eventId),
+  getAllEvents: () => ipcRenderer.invoke('get-all-events'),
+  deleteEvent: (eventId: string) => ipcRenderer.invoke('delete-event', eventId),
+  
+  // Compatibilidade (mantido para código antigo)
   scheduleShutdown: (targetTime: string) => ipcRenderer.invoke('schedule-shutdown', targetTime),
   cancelShutdown: () => ipcRenderer.invoke('cancel-shutdown'),
   getScheduledTime: () => ipcRenderer.invoke('get-scheduled-time'),
   checkWindowsShutdown: () => ipcRenderer.invoke('check-windows-shutdown'),
+  
+  // Window controls
   windowClose: () => ipcRenderer.invoke('window-close'),
   windowMinimize: () => ipcRenderer.invoke('window-minimize')
 }

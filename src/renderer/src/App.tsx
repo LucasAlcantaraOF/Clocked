@@ -1,153 +1,58 @@
 import { useState, useEffect } from 'react'
+import type { ClockedEvent } from '../../preload/index.d'
 
-interface ShutdownStatus {
-  scheduled: boolean
-  targetTime: Date | null
-  timeRemaining: string | null
+interface ActionOption {
+  type: string
+  name: string
+  icon: string
 }
 
+const AVAILABLE_ACTIONS: ActionOption[] = [
+  { type: 'shutdown', name: 'Desligar', icon: 'ph-power' },
+  { type: 'restart', name: 'Reiniciar', icon: 'ph-arrow-clockwise' }
+  // Futuras actions podem ser adicionadas aqui
+]
+
 function App(): JSX.Element {
-  const [date, setDate] = useState<string>('')
+  const [currentDate, setCurrentDate] = useState<string>('')
+  const [currentTime, setCurrentTime] = useState<string>('00:00')
+  const [task, setTask] = useState<string>('')
   const [time, setTime] = useState<string>('')
-  const [status, setStatus] = useState<ShutdownStatus>({
-    scheduled: false,
-    targetTime: null,
-    timeRemaining: null
-  })
+  const [repeat, setRepeat] = useState<string>('')
+  const [selectedActions, setSelectedActions] = useState<string[]>(['shutdown'])
+  const [events, setEvents] = useState<ClockedEvent[]>([])
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' | '' }>({
     text: '',
     type: ''
   })
-  const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    // Define data e hora padrão (1 hora a partir de agora)
-    const now = new Date()
-    const defaultTime = new Date(now.getTime() + 60 * 60 * 1000) // +1 hora
+    // Atualiza relógio
+    const updateClock = () => {
+      const now = new Date()
+      const days = ['DOMINGO', 'SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO']
+      const months = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ']
+      
+      setCurrentDate(`${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]}`)
+      setCurrentTime(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))
+    }
 
-    setDate(defaultTime.toISOString().split('T')[0])
-    setTime(
-      defaultTime.toTimeString().split(' ')[0].substring(0, 5) // HH:mm
-    )
+    updateClock()
+    const interval = setInterval(updateClock, 1000)
 
-    // Verifica se há desligamento agendado
-    checkScheduledShutdown()
+    // Carrega eventos salvos
+    loadEvents()
+
+    return () => clearInterval(interval)
   }, [])
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null
-
-    if (status.scheduled && status.targetTime) {
-      interval = setInterval(() => {
-        updateTimeRemaining()
-      }, 1000)
-    }
-
-    return () => {
-      if (interval) clearInterval(interval)
-    }
-  }, [status.scheduled, status.targetTime])
-
-  const checkScheduledShutdown = async (): Promise<void> => {
+  const loadEvents = async (): Promise<void> => {
     try {
-      const result = await window.api.getScheduledTime()
-      if (result === 'active') {
-        // Se há um timer ativo, mantém o status mas não temos a hora exata
-        // Isso é uma limitação - em uma versão melhorada, salvaríamos a hora
-        setStatus({ scheduled: true, targetTime: null, timeRemaining: null })
-      }
+      const allEvents = await window.api.getAllEvents()
+      setEvents(allEvents)
     } catch (error) {
-      console.error('Erro ao verificar desligamento agendado:', error)
-    }
-  }
-
-  const updateTimeRemaining = (): void => {
-    if (!status.targetTime) return
-
-    const now = new Date()
-    const diff = status.targetTime.getTime() - now.getTime()
-
-    if (diff <= 0) {
-      setStatus({ scheduled: false, targetTime: null, timeRemaining: null })
-      return
-    }
-
-    const hours = Math.floor(diff / (1000 * 60 * 60))
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000)
-
-    setStatus((prev) => ({
-      ...prev,
-      timeRemaining: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-    }))
-  }
-
-  const handleSchedule = async (): Promise<void> => {
-    if (!date || !time) {
-      showMessage('Por favor, preencha data e hora', 'error')
-      return
-    }
-
-    setIsLoading(true)
-    setMessage({ text: '', type: '' })
-
-    try {
-      const targetDateTime = new Date(`${date}T${time}:00`)
-      const now = new Date()
-
-      // Validações
-      if (targetDateTime <= now) {
-        showMessage('O horário deve ser no futuro', 'error')
-        setIsLoading(false)
-        return
-      }
-
-      const maxTime = new Date(now.getTime() + 24 * 60 * 60 * 1000) // 24 horas
-      if (targetDateTime > maxTime) {
-        showMessage('O horário não pode ser mais de 24 horas no futuro', 'error')
-        setIsLoading(false)
-        return
-      }
-
-      const result = await window.api.scheduleShutdown(targetDateTime.toISOString())
-
-      if (result.success) {
-        setStatus({
-          scheduled: true,
-          targetTime: targetDateTime,
-          timeRemaining: null
-        })
-        showMessage(result.message, 'success')
-        updateTimeRemaining()
-      } else {
-        showMessage(result.message, 'error')
-      }
-    } catch (error) {
-      console.error('Erro ao agendar desligamento:', error)
-      showMessage('Erro ao agendar o desligamento', 'error')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleCancel = async (): Promise<void> => {
-    setIsLoading(true)
-    setMessage({ text: '', type: '' })
-
-    try {
-      const result = await window.api.cancelShutdown()
-
-      if (result.success) {
-        setStatus({ scheduled: false, targetTime: null, timeRemaining: null })
-        showMessage(result.message, 'success')
-      } else {
-        showMessage(result.message, 'error')
-      }
-    } catch (error) {
-      console.error('Erro ao cancelar desligamento:', error)
-      showMessage('Erro ao cancelar o desligamento', 'error')
-    } finally {
-      setIsLoading(false)
+      console.error('Erro ao carregar eventos:', error)
     }
   }
 
@@ -156,6 +61,138 @@ function App(): JSX.Element {
     setTimeout(() => {
       setMessage({ text: '', type: '' })
     }, 5000)
+  }
+
+  const saveNode = async (): Promise<void> => {
+    if (!task || !time) {
+      showMessage('Preencha título e horário', 'error')
+      return
+    }
+
+    if (selectedActions.length === 0) {
+      showMessage('Selecione pelo menos uma ação', 'error')
+      return
+    }
+
+    try {
+      // Cria actions
+      const actions = selectedActions.map(actionType => ({
+        id: `${actionType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        type: actionType
+      }))
+
+      let result
+
+      // Se está editando, atualiza o evento
+      if (editingId) {
+        result = await window.api.updateEvent(editingId, {
+          title: task,
+          time: time,
+          repeat: repeat ? parseInt(repeat) : undefined,
+          actions: actions
+        })
+
+        if (result.success && result.event) {
+          showMessage('Evento modificado com sucesso!', 'success')
+          clearInputs()
+          await loadEvents()
+        } else {
+          showMessage(result.message, 'error')
+        }
+      } else {
+        // Cria novo evento
+        result = await window.api.createEvent({
+          title: task,
+          time: time,
+          repeat: repeat ? parseInt(repeat) : undefined,
+          actions: actions
+        })
+
+        if (result.success && result.event) {
+          showMessage('Evento criado com sucesso!', 'success')
+          clearInputs()
+          await loadEvents()
+        } else {
+          showMessage(result.message, 'error')
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao salvar evento:', error)
+      showMessage(editingId ? 'Erro ao modificar evento' : 'Erro ao criar evento', 'error')
+    }
+  }
+
+  const editNode = async (id: string): Promise<void> => {
+    const event = events.find(e => e.id === id)
+    if (!event) return
+
+    // Preenche o formulário
+    setTask(event.title)
+    setTime(event.time)
+    setRepeat(event.repeat?.toString() || '')
+    setSelectedActions(event.actions.map(a => a.type))
+    setEditingId(id)
+
+    // Scroll para o topo
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const deleteNode = async (id: string): Promise<void> => {
+    try {
+      const result = await window.api.deleteEvent(id)
+      if (result.success) {
+        showMessage('Evento deletado', 'success')
+        await loadEvents()
+      } else {
+        showMessage(result.message, 'error')
+      }
+    } catch (error) {
+      console.error('Erro ao deletar evento:', error)
+      showMessage('Erro ao deletar evento', 'error')
+    }
+  }
+
+  const cancelEvent = async (id: string): Promise<void> => {
+    try {
+      const result = await window.api.cancelEvent(id)
+      if (result.success) {
+        showMessage('Evento cancelado', 'success')
+        await loadEvents()
+      } else {
+        showMessage(result.message, 'error')
+      }
+    } catch (error) {
+      console.error('Erro ao cancelar evento:', error)
+      showMessage('Erro ao cancelar evento', 'error')
+    }
+  }
+
+  const clearInputs = (): void => {
+    setTask('')
+    setTime('')
+    setRepeat('')
+    setSelectedActions(['shutdown'])
+    setEditingId(null)
+  }
+
+  const toggleAction = (actionType: string): void => {
+    setSelectedActions(prev => {
+      if (prev.includes(actionType)) {
+        return prev.filter(a => a !== actionType)
+      } else {
+        return [...prev, actionType]
+      }
+    })
+  }
+
+  const getActionIcon = (type: string): string => {
+    const action = AVAILABLE_ACTIONS.find(a => a.type === type)
+    return action?.icon || 'ph-circle'
+  }
+
+  const getActionName = (type: string): string => {
+    const action = AVAILABLE_ACTIONS.find(a => a.type === type)
+    return action?.name || type
   }
 
   const handleClose = (): void => {
@@ -170,7 +207,7 @@ function App(): JSX.Element {
     <div className="app">
       <div className="title-bar">
         <div className="title-bar-drag-region">
-          <span className="title-text">Programador de Desligamento</span>
+          <span className="title-text">Clocked</span>
         </div>
         <div className="title-bar-controls">
           <button className="title-bar-button minimize" onClick={handleMinimize} title="Minimizar">
@@ -185,84 +222,121 @@ function App(): JSX.Element {
           </button>
         </div>
       </div>
-      <div className="container">
-        <header className="header">
-          <div className="icon">⏰</div>
-          <h1>Programador de Desligamento</h1>
-          <p className="subtitle">Agende o desligamento do seu computador</p>
+
+      <div className="clocked-container">
+        <header className="clocked-header">
+          <div className="user-info">
+            <p id="current-date">{currentDate}</p>
+            <h2 id="current-time">{currentTime}</h2>
+          </div>
+          <div style={{ fontWeight: 800, color: 'var(--primary)' }}>CLOCKED</div>
         </header>
 
         {message.text && (
           <div className={`message message-${message.type}`}>{message.text}</div>
         )}
 
-        <div className="form-section">
-          <div className="input-group">
-            <label htmlFor="date">Data</label>
+        <div className="creator-bubble">
+          <div className="input-item" style={{ width: '200px' }}>
+            <label>O que fazer?</label>
             <input
-              id="date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              disabled={status.scheduled || isLoading}
-              min={new Date().toISOString().split('T')[0]}
+              type="text"
+              id="task"
+              placeholder="Título do lembrete"
+              value={task}
+              onChange={(e) => setTask(e.target.value)}
             />
           </div>
-
-          <div className="input-group">
-            <label htmlFor="time">Hora</label>
+          <div className="input-item">
+            <label>Horário</label>
             <input
-              id="time"
               type="time"
+              id="time"
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              disabled={status.scheduled || isLoading}
+              placeholder="Selecione o horário"
             />
           </div>
-        </div>
-
-        {status.scheduled && (
-          <div className="status-card">
-            <div className="status-icon">✓</div>
-            <div className="status-content">
-              <h3>Desligamento Agendado</h3>
-              {status.targetTime && (
-                <p className="target-time">
-                  {status.targetTime.toLocaleString('pt-BR', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </p>
-              )}
-              {status.timeRemaining && (
-                <p className="time-remaining">Tempo restante: {status.timeRemaining}</p>
-              )}
+          <div className="input-item">
+            <label>Repetir (min)</label>
+            <input
+              type="number"
+              id="repeat"
+              placeholder="0"
+              style={{ width: '60px' }}
+              value={repeat}
+              onChange={(e) => setRepeat(e.target.value)}
+            />
+          </div>
+          <div className="input-item" style={{ minWidth: '150px' }}>
+            <label>Actions</label>
+            <div className="actions-selector">
+              {AVAILABLE_ACTIONS.map(action => (
+                <button
+                  key={action.type}
+                  type="button"
+                  className={`action-chip ${selectedActions.includes(action.type) ? 'active' : ''}`}
+                  onClick={() => toggleAction(action.type)}
+                  title={action.name}
+                >
+                  <i className={`ph ${getActionIcon(action.type)}`}></i>
+                </button>
+              ))}
             </div>
           </div>
-        )}
-
-        <div className="actions">
-          {!status.scheduled ? (
-            <button
-              className="btn btn-primary"
-              onClick={handleSchedule}
-              disabled={isLoading || !date || !time}
-            >
-              {isLoading ? 'Agendando...' : 'Agendar Desligamento'}
-            </button>
-          ) : (
-            <button className="btn btn-danger" onClick={handleCancel} disabled={isLoading}>
-              {isLoading ? 'Cancelando...' : 'Cancelar Desligamento'}
-            </button>
-          )}
+          <button
+            className="add-btn"
+            id="mainActionBtn"
+            onClick={saveNode}
+            title={editingId ? 'Salvar alterações' : 'Adicionar evento'}
+          >
+            <i className={`ph-bold ${editingId ? 'ph-check' : 'ph-plus'}`}></i>
+          </button>
         </div>
 
-        <div className="info">
-          <p>⚠️ O computador será desligado automaticamente no horário agendado.</p>
-          <p>Certifique-se de salvar seu trabalho antes do horário programado.</p>
+        <div className={`timeline-container ${events.length === 0 ? 'empty' : ''}`} id="timeline">
+          {events.length === 0 ? (
+            <div className="empty-state">
+              <i className="ph ph-clock" style={{ fontSize: '3rem', opacity: 0.3 }}></i>
+              <p>Nenhum evento agendado</p>
+            </div>
+          ) : (
+            events.map((event) => (
+              <div key={event.id} className="event-node">
+                <div className="controls">
+                  <button
+                    className="control-btn"
+                    onClick={() => editNode(event.id)}
+                    title="Editar"
+                  >
+                    <i className="ph ph-pencil-simple"></i>
+                  </button>
+                  <button
+                    className="control-btn del"
+                    onClick={() => deleteNode(event.id)}
+                    title="Deletar"
+                  >
+                    <i className="ph ph-trash"></i>
+                  </button>
+                </div>
+                <div className="node-time">{event.time}</div>
+                <div className="node-label">{event.title}</div>
+                <div className="tag-group">
+                  {event.actions.map((action, idx) => (
+                    <div key={idx} className="tag active">
+                      <i className={`ph-fill ${getActionIcon(action.type)}`}></i>{' '}
+                      {getActionName(action.type).toUpperCase()}
+                    </div>
+                  ))}
+                  {event.repeat && event.repeat > 0 && (
+                    <div className="tag">
+                      <i className="ph ph-arrows-clockwise"></i> CADA {event.repeat}M
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -270,4 +344,3 @@ function App(): JSX.Element {
 }
 
 export default App
-

@@ -96,14 +96,492 @@ const optimizer = {
     });
   }
 };
+const execAsync$1 = util.promisify(child_process.exec);
+const shutdownTimers = /* @__PURE__ */ new Map();
+class ShutdownAction {
+  constructor() {
+    this.type = "shutdown";
+    this.name = "Desligar";
+    this.icon = "ph-power";
+  }
+  async execute(config, targetTime) {
+    try {
+      const now = /* @__PURE__ */ new Date();
+      const delay = targetTime.getTime() - now.getTime();
+      if (delay <= 0) {
+        return {
+          success: false,
+          message: "O horário selecionado já passou"
+        };
+      }
+      const maxDelay = 24 * 60 * 60 * 1e3;
+      if (delay > maxDelay) {
+        return {
+          success: false,
+          message: "O horário não pode ser mais de 24 horas no futuro"
+        };
+      }
+      if (shutdownTimers.has(config.id)) {
+        const oldTimer = shutdownTimers.get(config.id);
+        if (oldTimer) clearTimeout(oldTimer);
+      }
+      const timer = setTimeout(async () => {
+        try {
+          const platform2 = process.platform;
+          let command;
+          if (platform2 === "win32") {
+            command = "shutdown /s /t 0";
+          } else if (platform2 === "darwin") {
+            command = "sudo shutdown -h now";
+          } else {
+            command = "sudo shutdown -h now";
+          }
+          await execAsync$1(command);
+          shutdownTimers.delete(config.id);
+        } catch (error) {
+          console.error("❌ Erro ao executar desligamento:", error);
+          shutdownTimers.delete(config.id);
+        }
+      }, delay);
+      shutdownTimers.set(config.id, timer);
+      return {
+        success: true,
+        message: `Desligar agendado para ${targetTime.toLocaleString("pt-BR")}`,
+        data: { timerId: timer }
+      };
+    } catch (error) {
+      console.error("❌ Erro ao agendar desligamento:", error);
+      return {
+        success: false,
+        message: "Erro ao agendar o desligar"
+      };
+    }
+  }
+  async cancel(config) {
+    try {
+      const timer = shutdownTimers.get(config.id);
+      if (timer) {
+        clearTimeout(timer);
+        shutdownTimers.delete(config.id);
+        if (process.platform === "win32") {
+          try {
+            await execAsync$1("shutdown /a", { timeout: 2e3 });
+          } catch (error) {
+            if (error.code !== 1116) {
+              console.log("⚠️ Não foi possível cancelar shutdown do Windows");
+            }
+          }
+        }
+        return {
+          success: true,
+          message: "Desligar cancelado com sucesso"
+        };
+      }
+      return {
+        success: false,
+        message: "Nenhum desligar agendado para cancelar"
+      };
+    } catch (error) {
+      console.error("❌ Erro ao cancelar desligamento:", error);
+      return {
+        success: false,
+        message: "Erro ao cancelar o desligar"
+      };
+    }
+  }
+  validate(config) {
+    return { valid: true };
+  }
+}
+const shutdownAction = new ShutdownAction();
 const execAsync = util.promisify(child_process.exec);
+const restartTimers = /* @__PURE__ */ new Map();
+class RestartAction {
+  constructor() {
+    this.type = "restart";
+    this.name = "Reiniciar";
+    this.icon = "ph-arrow-clockwise";
+  }
+  async execute(config, targetTime) {
+    try {
+      const now = /* @__PURE__ */ new Date();
+      const delay = targetTime.getTime() - now.getTime();
+      if (delay <= 0) {
+        return {
+          success: false,
+          message: "O horário selecionado já passou"
+        };
+      }
+      const maxDelay = 24 * 60 * 60 * 1e3;
+      if (delay > maxDelay) {
+        return {
+          success: false,
+          message: "O horário não pode ser mais de 24 horas no futuro"
+        };
+      }
+      if (restartTimers.has(config.id)) {
+        const oldTimer = restartTimers.get(config.id);
+        if (oldTimer) clearTimeout(oldTimer);
+      }
+      const timer = setTimeout(async () => {
+        try {
+          const platform2 = process.platform;
+          let command;
+          if (platform2 === "win32") {
+            command = "shutdown /r /t 0";
+          } else if (platform2 === "darwin") {
+            command = "sudo reboot";
+          } else {
+            command = "sudo reboot";
+          }
+          await execAsync(command);
+          restartTimers.delete(config.id);
+        } catch (error) {
+          console.error("❌ Erro ao executar reinicialização:", error);
+          restartTimers.delete(config.id);
+        }
+      }, delay);
+      restartTimers.set(config.id, timer);
+      return {
+        success: true,
+        message: `Reinicialização agendada para ${targetTime.toLocaleString("pt-BR")}`,
+        data: { timerId: timer }
+      };
+    } catch (error) {
+      console.error("❌ Erro ao agendar reinicialização:", error);
+      return {
+        success: false,
+        message: "Erro ao agendar a reinicialização"
+      };
+    }
+  }
+  async cancel(config) {
+    try {
+      const timer = restartTimers.get(config.id);
+      if (timer) {
+        clearTimeout(timer);
+        restartTimers.delete(config.id);
+        if (process.platform === "win32") {
+          try {
+            await execAsync("shutdown /a", { timeout: 2e3 });
+          } catch (error) {
+            if (error.code !== 1116) {
+              console.log("⚠️ Não foi possível cancelar restart do Windows");
+            }
+          }
+        }
+        return {
+          success: true,
+          message: "Reinicialização cancelada com sucesso"
+        };
+      }
+      return {
+        success: false,
+        message: "Nenhuma reinicialização agendada para cancelar"
+      };
+    } catch (error) {
+      console.error("❌ Erro ao cancelar reinicialização:", error);
+      return {
+        success: false,
+        message: "Erro ao cancelar a reinicialização"
+      };
+    }
+  }
+  validate(config) {
+    return { valid: true };
+  }
+}
+const restartAction = new RestartAction();
+class ActionRegistry {
+  constructor() {
+    this.actions = /* @__PURE__ */ new Map();
+  }
+  register(action) {
+    this.actions.set(action.type, action);
+  }
+  get(type) {
+    return this.actions.get(type);
+  }
+  getAll() {
+    return Array.from(this.actions.values());
+  }
+  has(type) {
+    return this.actions.has(type);
+  }
+}
+const actionRegistry = new ActionRegistry();
+class EventManager {
+  constructor() {
+    this.events = /* @__PURE__ */ new Map();
+    this.eventTimers = /* @__PURE__ */ new Map();
+    this.repeatTimers = /* @__PURE__ */ new Map();
+  }
+  async createEvent(event) {
+    try {
+      const id = `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const now = /* @__PURE__ */ new Date();
+      let targetDateTime;
+      if (event.date) {
+        targetDateTime = /* @__PURE__ */ new Date(`${event.date}T${event.time}:00`);
+      } else {
+        const today = /* @__PURE__ */ new Date();
+        const [hours, minutes] = event.time.split(":").map(Number);
+        targetDateTime = new Date(today);
+        targetDateTime.setHours(hours, minutes, 0, 0);
+        if (targetDateTime <= now) {
+          targetDateTime.setDate(targetDateTime.getDate() + 1);
+        }
+      }
+      const clockedEvent = {
+        ...event,
+        id,
+        createdAt: now,
+        targetDateTime
+      };
+      if (targetDateTime <= now) {
+        return {
+          success: false,
+          message: "O horário selecionado já passou"
+        };
+      }
+      const maxDelay = 24 * 60 * 60 * 1e3;
+      if (targetDateTime.getTime() - now.getTime() > maxDelay) {
+        return {
+          success: false,
+          message: "O horário não pode ser mais de 24 horas no futuro"
+        };
+      }
+      for (const actionConfig of event.actions) {
+        const action = actionRegistry.get(actionConfig.type);
+        if (!action) {
+          return {
+            success: false,
+            message: `Action tipo "${actionConfig.type}" não encontrada`
+          };
+        }
+        const validation = action.validate?.(actionConfig);
+        if (validation && !validation.valid) {
+          return {
+            success: false,
+            message: validation.error || "Action inválida"
+          };
+        }
+      }
+      await this.scheduleEvent(clockedEvent);
+      this.events.set(id, clockedEvent);
+      return {
+        success: true,
+        event: clockedEvent,
+        message: "Evento criado com sucesso"
+      };
+    } catch (error) {
+      console.error("❌ Erro ao criar evento:", error);
+      return {
+        success: false,
+        message: "Erro ao criar evento"
+      };
+    }
+  }
+  async scheduleEvent(event) {
+    if (!event.targetDateTime) return;
+    const now = /* @__PURE__ */ new Date();
+    const delay = event.targetDateTime.getTime() - now.getTime();
+    if (delay <= 0) return;
+    const oldTimer = this.eventTimers.get(event.id);
+    if (oldTimer) clearTimeout(oldTimer);
+    const timer = setTimeout(async () => {
+      console.log(`⏰ Executando evento: ${event.title} (${event.id})`);
+      if (!event.targetDateTime) {
+        console.error("❌ Evento sem targetDateTime");
+        return;
+      }
+      for (const actionConfig of event.actions) {
+        const action = actionRegistry.get(actionConfig.type);
+        if (action) {
+          try {
+            const result = await action.execute(actionConfig, event.targetDateTime);
+            console.log(`   ${action.name}: ${result.success ? "✅" : "❌"} ${result.message}`);
+          } catch (error) {
+            console.error(`   ❌ Erro ao executar ${action.name}:`, error);
+          }
+        }
+      }
+      if (event.repeat && event.repeat > 0 && event.targetDateTime) {
+        const newTargetTime = new Date(event.targetDateTime.getTime() + event.repeat * 60 * 1e3);
+        const newEvent = { ...event, targetDateTime: newTargetTime };
+        await this.scheduleEvent(newEvent);
+      } else {
+        this.events.delete(event.id);
+        this.eventTimers.delete(event.id);
+      }
+    }, delay);
+    this.eventTimers.set(event.id, timer);
+  }
+  async updateEvent(eventId, eventData) {
+    try {
+      const existingEvent = this.events.get(eventId);
+      if (!existingEvent) {
+        return {
+          success: false,
+          message: "Evento não encontrado"
+        };
+      }
+      const savedCreatedAt = existingEvent.createdAt;
+      const timer = this.eventTimers.get(eventId);
+      if (timer) {
+        clearTimeout(timer);
+        this.eventTimers.delete(eventId);
+      }
+      const repeatTimer = this.repeatTimers.get(eventId);
+      if (repeatTimer) {
+        clearTimeout(repeatTimer);
+        this.repeatTimers.delete(eventId);
+      }
+      for (const actionConfig of existingEvent.actions) {
+        const action = actionRegistry.get(actionConfig.type);
+        if (action && action.cancel) {
+          try {
+            await action.cancel(actionConfig);
+          } catch (error) {
+            console.error(`Erro ao cancelar ${action.name}:`, error);
+          }
+        }
+      }
+      const now = /* @__PURE__ */ new Date();
+      let targetDateTime;
+      if (eventData.date) {
+        targetDateTime = /* @__PURE__ */ new Date(`${eventData.date}T${eventData.time}:00`);
+      } else {
+        const today = /* @__PURE__ */ new Date();
+        const [hours, minutes] = eventData.time.split(":").map(Number);
+        targetDateTime = new Date(today);
+        targetDateTime.setHours(hours, minutes, 0, 0);
+        if (targetDateTime <= now) {
+          targetDateTime.setDate(targetDateTime.getDate() + 1);
+        }
+      }
+      if (targetDateTime <= now) {
+        return {
+          success: false,
+          message: "O horário selecionado já passou"
+        };
+      }
+      const maxDelay = 24 * 60 * 60 * 1e3;
+      if (targetDateTime.getTime() - now.getTime() > maxDelay) {
+        return {
+          success: false,
+          message: "O horário não pode ser mais de 24 horas no futuro"
+        };
+      }
+      for (const actionConfig of eventData.actions) {
+        const action = actionRegistry.get(actionConfig.type);
+        if (!action) {
+          return {
+            success: false,
+            message: `Action tipo "${actionConfig.type}" não encontrada`
+          };
+        }
+        const validation = action.validate?.(actionConfig);
+        if (validation && !validation.valid) {
+          return {
+            success: false,
+            message: validation.error || "Action inválida"
+          };
+        }
+      }
+      const updatedEvent = {
+        ...eventData,
+        id: eventId,
+        createdAt: savedCreatedAt,
+        targetDateTime
+      };
+      await this.scheduleEvent(updatedEvent);
+      this.events.set(eventId, updatedEvent);
+      return {
+        success: true,
+        event: updatedEvent,
+        message: "Evento modificado com sucesso"
+      };
+    } catch (error) {
+      console.error("❌ Erro ao atualizar evento:", error);
+      return {
+        success: false,
+        message: "Erro ao atualizar evento"
+      };
+    }
+  }
+  async cancelEvent(eventId) {
+    try {
+      const event = this.events.get(eventId);
+      if (!event) {
+        return {
+          success: false,
+          message: "Evento não encontrado"
+        };
+      }
+      const timer = this.eventTimers.get(eventId);
+      if (timer) {
+        clearTimeout(timer);
+        this.eventTimers.delete(eventId);
+      }
+      const repeatTimer = this.repeatTimers.get(eventId);
+      if (repeatTimer) {
+        clearTimeout(repeatTimer);
+        this.repeatTimers.delete(eventId);
+      }
+      for (const actionConfig of event.actions) {
+        const action = actionRegistry.get(actionConfig.type);
+        if (action && action.cancel) {
+          try {
+            await action.cancel(actionConfig);
+          } catch (error) {
+            console.error(`Erro ao cancelar ${action.name}:`, error);
+          }
+        }
+      }
+      this.events.delete(eventId);
+      return {
+        success: true,
+        message: "Evento cancelado com sucesso"
+      };
+    } catch (error) {
+      console.error("❌ Erro ao cancelar evento:", error);
+      return {
+        success: false,
+        message: "Erro ao cancelar evento"
+      };
+    }
+  }
+  getEvent(eventId) {
+    return this.events.get(eventId);
+  }
+  getAllEvents() {
+    return Array.from(this.events.values());
+  }
+  deleteEvent(eventId) {
+    const event = this.events.get(eventId);
+    if (event) {
+      const timer = this.eventTimers.get(eventId);
+      if (timer) clearTimeout(timer);
+      const repeatTimer = this.repeatTimers.get(eventId);
+      if (repeatTimer) clearTimeout(repeatTimer);
+      this.events.delete(eventId);
+      this.eventTimers.delete(eventId);
+      this.repeatTimers.delete(eventId);
+      return true;
+    }
+    return false;
+  }
+}
+const eventManager = new EventManager();
+actionRegistry.register(shutdownAction);
+actionRegistry.register(restartAction);
 let mainWindow = null;
-let shutdownTimer = null;
 function createWindow() {
   mainWindow = new electron.BrowserWindow({
-    width: 500,
-    height: 600,
-    minWidth: 450,
+    width: 900,
+    height: 700,
+    minWidth: 600,
     minHeight: 550,
     show: false,
     frame: false,
@@ -130,155 +608,55 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
   }
 }
-function calculateShutdownDelay(targetTime) {
-  const now = /* @__PURE__ */ new Date();
-  const delay = targetTime.getTime() - now.getTime();
-  return Math.max(0, delay);
-}
-async function scheduleShutdown(targetTime) {
-  try {
-    console.log("🚀 INÍCIO: scheduleShutdown chamado");
-    console.log(`   Horário recebido: ${targetTime.toISOString()}`);
-    if (shutdownTimer) {
-      console.log(`   ⚠️ Timer anterior encontrado (ID: ${shutdownTimer}), cancelando...`);
-      clearTimeout(shutdownTimer);
-      shutdownTimer = null;
-      console.log("⏹️ Timer anterior cancelado");
-    } else {
-      console.log("   ✅ Nenhum timer anterior encontrado");
-    }
-    const delay = calculateShutdownDelay(targetTime);
-    const delayInSeconds = Math.floor(delay / 1e3);
-    const delayInMinutes = Math.floor(delayInSeconds / 60);
-    const delayInHours = Math.floor(delayInMinutes / 60);
-    console.log("📅 Agendando desligamento:");
-    console.log(`   Horário alvo: ${targetTime.toLocaleString("pt-BR")}`);
-    console.log(`   Delay: ${delayInHours}h ${delayInMinutes % 60}m ${delayInSeconds % 60}s (${delayInSeconds} segundos / ${delay} ms)`);
-    if (delay === 0) {
-      console.log("❌ ERRO: O horário selecionado já passou");
-      return { success: false, message: "O horário selecionado já passou" };
-    }
-    const maxDelay = 24 * 60 * 60 * 1e3;
-    if (delay > maxDelay) {
-      console.log("❌ ERRO: Horário excede o limite de 24 horas");
-      return { success: false, message: "O horário não pode ser mais de 24 horas no futuro" };
-    }
-    console.log(`   ⏰ Criando timer com delay de ${delay}ms...`);
-    shutdownTimer = setTimeout(async () => {
-      console.log("🔄 Executando desligamento agora...");
-      console.log(`   Timer executado! ID: ${shutdownTimer}`);
-      try {
-        const platform2 = process.platform;
-        let command;
-        if (platform2 === "win32") {
-          command = "shutdown /s /t 0";
-        } else if (platform2 === "darwin") {
-          command = "sudo shutdown -h now";
-        } else {
-          command = "sudo shutdown -h now";
-        }
-        console.log(`💻 Executando comando: ${command}`);
-        await execAsync(command);
-        console.log("✅ Comando de desligamento executado com sucesso");
-      } catch (error) {
-        console.error("❌ Erro ao desligar o computador:", error);
-        mainWindow?.webContents.send("shutdown-error", {
-          message: "Erro ao executar o desligamento. Verifique as permissões."
-        });
-      }
-    }, delay);
-    console.log(`✅ Desligamento agendado com sucesso!`);
-    console.log(`   Timer ID: ${shutdownTimer}`);
-    console.log(`   Timer ativo: ${shutdownTimer !== null}`);
-    console.log(`   Tipo do timer: ${typeof shutdownTimer}`);
-    return {
-      success: true,
-      message: `Desligamento agendado para ${targetTime.toLocaleString("pt-BR")}`
-    };
-  } catch (error) {
-    console.error("❌ Erro ao agendar desligamento:", error);
-    return {
-      success: false,
-      message: "Erro ao agendar o desligamento"
-    };
-  }
-}
-async function checkWindowsShutdownScheduled() {
-  if (process.platform !== "win32") {
-    return false;
-  }
-  try {
-    await execAsync("shutdown /a", { timeout: 2e3 });
-    console.log("ℹ️ Verificação: Havia um shutdown agendado no Windows (foi cancelado na verificação)");
-    return true;
-  } catch (error) {
-    if (error.code === 1116) {
-      console.log("ℹ️ Verificação: Nenhum shutdown agendado no Windows");
-      return false;
-    }
-    console.log(`ℹ️ Verificação: Erro ao verificar shutdown (código ${error.code})`);
-    return false;
-  }
-}
-function cancelShutdown() {
-  try {
-    if (shutdownTimer) {
-      console.log(`⏹️ Cancelando timer ID: ${shutdownTimer}`);
-      clearTimeout(shutdownTimer);
-      shutdownTimer = null;
-      console.log("⏹️ Timer de desligamento cancelado (Node.js)");
-      if (process.platform === "win32") {
-        checkWindowsShutdownScheduled().then((hasScheduled) => {
-          if (hasScheduled) {
-            child_process.exec("shutdown /a", (error) => {
-              if (error) {
-                console.log("⚠️ Não foi possível cancelar shutdown do Windows (pode não estar agendado)");
-              } else {
-                console.log("✅ Shutdown do Windows cancelado");
-              }
-            });
-          } else {
-            console.log("ℹ️ Nenhum shutdown agendado no Windows (apenas timer do Node.js foi cancelado)");
-          }
-        }).catch(() => {
-          console.log("ℹ️ Verificação de shutdown do Windows ignorada");
-        });
-      }
-      return { success: true, message: "Desligamento cancelado com sucesso" };
-    }
-    console.log("⚠️ Nenhum desligamento agendado para cancelar");
-    return { success: false, message: "Nenhum desligamento agendado" };
-  } catch (error) {
-    console.error("❌ Erro ao cancelar desligamento:", error);
-    return { success: false, message: "Erro ao cancelar o desligamento" };
-  }
-}
 electron.app.whenReady().then(() => {
   electronApp.setAppUserModelId("com.sleep-schedule.app");
   electron.app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window);
   });
+  electron.ipcMain.handle("create-event", async (_, eventData) => {
+    return await eventManager.createEvent(eventData);
+  });
+  electron.ipcMain.handle("cancel-event", async (_, eventId) => {
+    return await eventManager.cancelEvent(eventId);
+  });
+  electron.ipcMain.handle("get-event", async (_, eventId) => {
+    return eventManager.getEvent(eventId);
+  });
+  electron.ipcMain.handle("get-all-events", async () => {
+    return eventManager.getAllEvents();
+  });
+  electron.ipcMain.handle("update-event", async (_, eventId, eventData) => {
+    return await eventManager.updateEvent(eventId, eventData);
+  });
+  electron.ipcMain.handle("delete-event", async (_, eventId) => {
+    const deleted = eventManager.deleteEvent(eventId);
+    return { success: deleted, message: deleted ? "Evento deletado" : "Evento não encontrado" };
+  });
   electron.ipcMain.handle("schedule-shutdown", async (_, targetTime) => {
     const date = new Date(targetTime);
-    return await scheduleShutdown(date);
+    const event = await eventManager.createEvent({
+      title: "Desligar",
+      time: date.toTimeString().substring(0, 5),
+      actions: [{ id: `shutdown-${Date.now()}`, type: "shutdown" }]
+    });
+    return {
+      success: event.success,
+      message: event.message
+    };
   });
-  electron.ipcMain.handle("cancel-shutdown", () => {
-    return cancelShutdown();
+  electron.ipcMain.handle("cancel-shutdown", async () => {
+    const events = eventManager.getAllEvents();
+    const shutdownEvents = events.filter((e) => e.actions.some((a) => a.type === "shutdown"));
+    if (shutdownEvents.length === 0) {
+      return { success: false, message: "Nenhum desligamento agendado" };
+    }
+    const result = await eventManager.cancelEvent(shutdownEvents[0].id);
+    return result;
   });
   electron.ipcMain.handle("get-scheduled-time", () => {
-    const hasTimer = shutdownTimer !== null;
-    console.log(`🔍 Verificando timer: ${hasTimer ? "ATIVO" : "INATIVO"} (ID: ${shutdownTimer})`);
-    return shutdownTimer ? "active" : null;
-  });
-  electron.ipcMain.handle("check-windows-shutdown", async () => {
-    if (process.platform !== "win32") {
-      return { scheduled: false, message: "Apenas Windows suporta verificação de shutdown do sistema" };
-    }
-    const hasScheduled = await checkWindowsShutdownScheduled();
-    return {
-      scheduled: hasScheduled,
-      message: hasScheduled ? "Há um shutdown agendado no Windows" : "Nenhum shutdown agendado no Windows"
-    };
+    const events = eventManager.getAllEvents();
+    const hasShutdown = events.some((e) => e.actions.some((a) => a.type === "shutdown"));
+    return hasShutdown ? "active" : null;
   });
   electron.ipcMain.handle("window-close", () => {
     if (mainWindow) {

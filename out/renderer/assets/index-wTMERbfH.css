@@ -481,38 +481,6 @@ body {
   outline: none;
 }
 
-/* Placeholder com mesma cor do texto placeholder */
-.creator-bubble input::placeholder {
-  color: rgba(255, 255, 255, 0.5);
-  opacity: 1;
-}
-
-/* Input time vazio com cor similar ao placeholder */
-.creator-bubble input[type='time']:invalid {
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.creator-bubble input[type='time']:valid {
-  color: white;
-}
-
-/* Ícone de horário branco no creator-bubble */
-.creator-bubble input[type='time']::-webkit-calendar-picker-indicator {
-  filter: invert(1);
-  cursor: pointer;
-}
-
-/* Remove setas do input number */
-.creator-bubble input[type="number"] {
-  -moz-appearance: textfield;
-}
-
-.creator-bubble input[type="number"]::-webkit-outer-spin-button,
-.creator-bubble input[type="number"]::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
 .actions-selector {
   display: flex;
   gap: 8px;
