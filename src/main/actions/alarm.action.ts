@@ -1,6 +1,7 @@
 import { exec, ChildProcess } from 'child_process'
 import { promisify } from 'util'
 import { join } from 'path'
+import { existsSync } from 'fs'
 import { app, BrowserWindow } from 'electron'
 import { IAction, ActionConfig, ActionResult } from './index'
 
@@ -19,10 +20,50 @@ export class AlarmAction implements IAction {
       const now = new Date()
       const delay = targetTime.getTime() - now.getTime()
 
+      // Obtém o caminho do arquivo de alarme
+      const isDev = !app.isPackaged
+      let alarmPath: string
+
+      if (isDev) {
+        // Em desenvolvimento, usa o caminho da pasta public relativo ao cwd
+        alarmPath = join(process.cwd(), 'public', 'alarm-1.mp3')
+      } else {
+        // Em produção, o arquivo está em extraResources
+        // electron-builder coloca extraResources em process.resourcesPath
+        const resourcesPath = process.resourcesPath || app.getAppPath()
+        alarmPath = join(resourcesPath, 'public', 'alarm-1.mp3')
+      }
+
+      // Obtém o título do evento (se disponível)
+      const eventTitle = (config.params?.title as string) || 'Alarme'
+
+      // Se o delay é <= 0, toca o alarme imediatamente (evento já chegou)
       if (delay <= 0) {
+        console.log(`🔔 Alarme disparado imediatamente: ${eventTitle}`)
+        console.log(`   Caminho do alarme: ${alarmPath}`)
+        console.log(`   Arquivo existe: ${existsSync(alarmPath)}`)
+        
+        // Notifica o renderer que o alarme está tocando
+        // Usa protocolo customizado app:// para servir o arquivo
+        const audioPath = 'app://public/alarm-1.mp3'
+        
+        const windows = BrowserWindow.getAllWindows()
+        console.log(`   Janelas encontradas: ${windows.length}`)
+        windows.forEach(window => {
+          console.log(`   Enviando 'alarm-triggered' para janela: ${window.id}`)
+          window.webContents.send('alarm-triggered', {
+            actionId: config.id,
+            title: eventTitle,
+            alarmPath: audioPath
+          })
+        })
+
+        // O renderer process vai tocar o áudio diretamente
+
         return {
-          success: false,
-          message: 'O horário selecionado já passou'
+          success: true,
+          message: `Alarme tocando agora`,
+          data: { immediate: true }
         }
       }
 
@@ -43,34 +84,22 @@ export class AlarmAction implements IAction {
 
       // Cria novo timer
       const timer = setTimeout(async () => {
-        // Obtém o caminho do arquivo de alarme (fora do try para estar disponível no catch)
-        const isDev = !app.isPackaged
-        let alarmPath: string
-
-        if (isDev) {
-          // Em desenvolvimento, usa o caminho da pasta public relativo ao cwd
-          alarmPath = join(process.cwd(), 'public', 'alarm-1.mp3')
-        } else {
-          // Em produção, o arquivo está em extraResources
-          // electron-builder coloca extraResources em process.resourcesPath
-          const resourcesPath = process.resourcesPath || app.getAppPath()
-          alarmPath = join(resourcesPath, 'public', 'alarm-1.mp3')
-        }
-
-        // Obtém o título do evento (se disponível)
-        const eventTitle = (config.params?.title as string) || 'Alarme'
+        console.log(`🔔 Alarme disparado: ${eventTitle}`)
 
         // Notifica o renderer que o alarme está tocando
+        // Usa protocolo customizado app:// para servir o arquivo
+        const audioPath = 'app://public/alarm-1.mp3'
+        
         const windows = BrowserWindow.getAllWindows()
         windows.forEach(window => {
           window.webContents.send('alarm-triggered', {
             actionId: config.id,
-            title: eventTitle
+            title: eventTitle,
+            alarmPath: audioPath
           })
         })
 
-        // Inicia o loop do alarme
-        this.startAlarmLoop(config.id, alarmPath)
+        // O renderer process vai tocar o áudio diretamente
       }, delay)
 
       alarmTimers.set(config.id, timer)
@@ -97,10 +126,49 @@ export class AlarmAction implements IAction {
     let playAlarm: () => void
 
     if (platform === 'win32') {
-      // Windows: usa PowerShell para tocar o MP3
-      const escapedPath = alarmPath.replace(/\\/g, '\\\\').replace(/'/g, "''")
+      // Windows: usa métodos modernos sem depender do Windows Media Player obsoleto
       playAlarm = () => {
-        exec(`powershell -Command "$player = New-Object -ComObject WMPLib.WindowsMediaPlayer; $player.URL = '${escapedPath}'; $player.controls.play(); Start-Sleep -Seconds 1"`, () => {})
+        // Converte o caminho para formato Windows
+        const normalizedPath = alarmPath.replace(/\//g, '\\')
+        
+        // Método 1: Usa o player padrão do Windows (Groove Music, VLC, etc.)
+        // O comando 'start' abre o arquivo com o aplicativo padrão associado
+        const command = `cmd /c start "" "${normalizedPath}"`
+        
+        console.log(`   Tentando tocar: ${alarmPath}`)
+        
+        exec(command, { windowsHide: true }, (error, stdout, stderr) => {
+          if (error) {
+            console.error('❌ Erro ao tocar alarme com player padrão:', error.message)
+            if (stderr) console.error('   stderr:', stderr)
+            
+            // Fallback 1: Tenta com PowerShell Start-Process
+            const escapedPath = normalizedPath.replace(/'/g, "''")
+            const fallback1 = `powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '${escapedPath}'"`
+            console.log('   Tentando fallback 1 (Start-Process)')
+            exec(fallback1, { windowsHide: true }, (error2) => {
+              if (error2) {
+                console.error('❌ Erro no fallback 1:', error2.message)
+                
+                // Fallback 2: Tenta com ffplay (se instalado)
+                const fallback2 = `ffplay -nodisp -autoexit -loglevel quiet "${normalizedPath}"`
+                console.log('   Tentando fallback 2 (ffplay)')
+                exec(fallback2, { windowsHide: true }, (error3) => {
+                  if (error3) {
+                    console.error('❌ Erro no fallback 2 (ffplay):', error3.message)
+                    console.error('   Dica: Instale FFmpeg para melhor suporte de áudio')
+                  } else {
+                    console.log('✅ Alarme tocado com ffplay')
+                  }
+                })
+              } else {
+                console.log('✅ Alarme tocado com Start-Process')
+              }
+            })
+          } else {
+            console.log('✅ Alarme tocado com player padrão')
+          }
+        })
       }
     } else if (platform === 'darwin') {
       // macOS: usa afplay
@@ -116,18 +184,24 @@ export class AlarmAction implements IAction {
 
     console.log(`🔔 Iniciando alarme em loop: ${alarmPath}`)
     
+    // Verifica se o arquivo existe
+    if (!existsSync(alarmPath)) {
+      console.error(`❌ Arquivo de alarme não encontrado: ${alarmPath}`)
+      return
+    }
+    
     // Toca o alarme imediatamente
     playAlarm()
 
     // Cria um intervalo para tocar o alarme em loop
-    // O arquivo tem aproximadamente 3-4 segundos, então toca a cada 3.5 segundos
+    // Toca a cada 6 segundos
     const interval = setInterval(() => {
       if (activeAlarms.has(actionId)) {
         playAlarm()
       } else {
         clearInterval(interval)
       }
-    }, 3500) // Toca a cada 3.5 segundos para garantir loop contínuo
+    }, 6000) // Toca a cada 6 segundos
 
     // Cria um processo dummy para manter referência (não usado, mas necessário para o tipo)
     const dummyProcess = {

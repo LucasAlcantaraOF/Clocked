@@ -1,6 +1,7 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, protocol, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { readFile } from 'fs/promises'
 
 // IMPORTANTE: Registrar actions ANTES de importar EventManager
 // para garantir que estejam disponíveis quando o EventManager for carregado
@@ -18,6 +19,77 @@ actionRegistry.register(alarmAction)
 import { eventManager, ClockedEvent } from './events/EventManager'
 
 let mainWindow: BrowserWindow | null = null
+let systemTray: Tray | null = null
+let appIsQuiting = false
+
+// Função para criar system tray
+function createSystemTray(): void {
+  if (systemTray) return // Já existe
+
+  // Cria um ícone simples usando uma imagem pequena
+  // Em Windows, podemos usar um ícone padrão ou criar um ícone simples
+  let icon = nativeImage.createEmpty()
+  
+  // Tenta carregar um ícone se existir
+  if (process.platform === 'win32') {
+    try {
+      const iconPath = join(__dirname, '../resources/icon.png')
+      const loadedIcon = nativeImage.createFromPath(iconPath)
+      if (!loadedIcon.isEmpty()) {
+        icon = loadedIcon
+      }
+    } catch {
+      // Usa ícone vazio se não encontrar
+    }
+  }
+  
+  systemTray = new Tray(icon)
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Abrir Uclocked',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show()
+          mainWindow.focus()
+        }
+        if (systemTray) {
+          systemTray.destroy()
+          systemTray = null
+        }
+      }
+    },
+    {
+      label: 'Fechar',
+      click: () => {
+        appIsQuiting = true
+        if (mainWindow) {
+          mainWindow.destroy()
+        }
+        if (systemTray) {
+          systemTray.destroy()
+          systemTray = null
+        }
+        app.quit()
+      }
+    }
+  ])
+
+  systemTray.setToolTip('Uclocked')
+  systemTray.setContextMenu(contextMenu)
+
+  // Clique duplo no ícone restaura a janela
+  systemTray.on('double-click', () => {
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+    if (systemTray) {
+      systemTray.destroy()
+      systemTray = null
+    }
+  })
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -41,6 +113,19 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+    if (systemTray) {
+      systemTray.destroy()
+      systemTray = null
+    }
+  })
+
+  // Intercepta o evento de fechar para minimizar em vez de fechar
+  mainWindow.on('close', (event) => {
+    if (!appIsQuiting) {
+      event.preventDefault()
+      mainWindow?.hide()
+      createSystemTray()
+    }
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -58,6 +143,13 @@ function createWindow(): void {
 // Sistema antigo de shutdown removido - agora usa EventManager
 
 app.whenReady().then(() => {
+  // Registra protocolo customizado para servir arquivos estáticos
+  protocol.registerFileProtocol('app', (request, callback) => {
+    const filePath = request.url.replace('app://', '').replace(/\//g, '\\')
+    const normalizedPath = join(process.cwd(), filePath)
+    callback({ path: normalizedPath })
+  })
+  
   electronApp.setAppUserModelId('com.sleep-schedule.app')
 
   app.on('browser-window-created', (_, window) => {
@@ -125,8 +217,44 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('window-close', () => {
+    // Não fecha diretamente, apenas minimiza para bandeja
+    // O renderer vai mostrar o toast de confirmação
     if (mainWindow) {
-      mainWindow.close()
+      mainWindow.hide()
+      createSystemTray()
+    }
+  })
+
+  ipcMain.handle('window-close-confirm', () => {
+    // Fecha realmente o aplicativo
+    appIsQuiting = true
+    if (mainWindow) {
+      mainWindow.destroy()
+      if (systemTray) {
+        systemTray.destroy()
+        systemTray = null
+      }
+      app.quit()
+    }
+  })
+
+  ipcMain.handle('window-minimize-to-tray', () => {
+    // Minimiza para bandeja
+    if (mainWindow) {
+      mainWindow.hide()
+      createSystemTray()
+    }
+  })
+
+  ipcMain.handle('window-restore', () => {
+    // Restaura a janela da bandeja
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.focus()
+      if (systemTray) {
+        systemTray.destroy()
+        systemTray = null
+      }
     }
   })
 
@@ -150,11 +278,8 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  // No Windows e Linux, fecha o app mesmo com timer ativo
-  // O timer continuará rodando em background
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  // Não fecha o app automaticamente, permite minimizar para bandeja
+  // app.quit() só será chamado quando o usuário confirmar o fechamento
 })
 
 app.on('before-quit', () => {

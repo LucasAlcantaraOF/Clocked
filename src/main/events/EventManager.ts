@@ -1,4 +1,4 @@
-// Gerenciador de Eventos - Clocked
+// Gerenciador de Eventos - Uclocked
 // Gerencia eventos com múltiplas actions
 
 import { ActionConfig, ActionResult, actionRegistry } from '../actions'
@@ -136,7 +136,10 @@ class EventManager {
                 title: event.title
               }
             }
-            const result = await action.execute(configWithTitle, event.targetDateTime)
+            // Passa a data/hora atual (já que o evento já chegou) para tocar imediatamente
+            const now = new Date()
+            console.log(`   Executando ${action.name} com targetTime: ${event.targetDateTime?.toISOString()}, agora: ${now.toISOString()}`)
+            const result = await action.execute(configWithTitle, now)
             console.log(`   ${action.name}: ${result.success ? '✅' : '❌'} ${result.message}`)
           } catch (error) {
             console.error(`   ❌ Erro ao executar ${action.name}:`, error)

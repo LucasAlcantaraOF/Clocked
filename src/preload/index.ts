@@ -20,6 +20,9 @@ const api = {
   // Window controls
   windowClose: () => ipcRenderer.invoke('window-close'),
   windowMinimize: () => ipcRenderer.invoke('window-minimize'),
+  windowCloseConfirm: () => ipcRenderer.invoke('window-close-confirm'),
+  windowMinimizeToTray: () => ipcRenderer.invoke('window-minimize-to-tray'),
+  windowRestore: () => ipcRenderer.invoke('window-restore'),
   
   // Alarm control
   stopAlarm: (actionId: string) => ipcRenderer.invoke('stop-alarm', actionId),

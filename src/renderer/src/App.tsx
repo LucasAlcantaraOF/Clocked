@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { ClockedEvent } from '../../preload/index.d'
 
 interface ActionOption {
@@ -29,7 +29,12 @@ function App(): JSX.Element {
     text: '',
     type: ''
   })
-  const [activeAlarm, setActiveAlarm] = useState<{ actionId: string; title: string } | null>(null)
+  const [activeAlarm, setActiveAlarm] = useState<{ actionId: string; title: string; alarmPath?: string } | null>(null)
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+  const completedEventsRef = useRef<Set<string>>(new Set())
+  const alarmAudioRef = useRef<HTMLAudioElement | null>(null)
+  const alarmIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const currentAlarmPathRef = useRef<string | null>(null)
 
   useEffect(() => {
     // Atualiza relógio
@@ -50,54 +55,163 @@ function App(): JSX.Element {
 
     // Listener para alarme tocando
     window.api.onAlarmTriggered((data) => {
-      setActiveAlarm({ actionId: data.actionId, title: data.title })
+      console.log('🔔 Renderer recebeu alarm-triggered:', data)
+      setActiveAlarm({ actionId: data.actionId, title: data.title, alarmPath: data.alarmPath })
+      
+      // Armazena o caminho do alarme em uma ref para uso no loop
+      if (data.alarmPath) {
+        currentAlarmPathRef.current = data.alarmPath
+        playAlarmSound(data.alarmPath)
+      }
     })
 
     // Listener para alarme parado
     window.api.onAlarmStopped(() => {
+      console.log('🔕 Renderer recebeu alarm-stopped')
+      stopAlarmSound()
       setActiveAlarm(null)
+      currentAlarmPathRef.current = null
     })
 
     return () => {
       clearInterval(interval)
       window.api.removeAlarmListeners()
+      stopAlarmSound()
     }
   }, [])
 
+  // Função para tocar o alarme
+  const playAlarmSound = (alarmPath: string): void => {
+    // Para qualquer alarme anterior
+    stopAlarmSound()
+    
+    try {
+      // Tenta diferentes formatos de caminho
+      const audioUrls: string[] = []
+      
+      // Se já é uma URL completa (http/https/app://), usa diretamente
+      if (alarmPath.startsWith('http://') || alarmPath.startsWith('https://') || alarmPath.startsWith('app://')) {
+        audioUrls.push(alarmPath)
+      } 
+      // Se é caminho relativo (começa com /), tenta diferentes variações
+      else if (alarmPath.startsWith('/')) {
+        audioUrls.push(alarmPath)
+        // Tenta também com protocolo app://
+        audioUrls.push(`app://${alarmPath.substring(1)}`)
+        // Tenta também sem a barra inicial
+        audioUrls.push(alarmPath.substring(1))
+      }
+      // Para caminhos absolutos do sistema
+      else {
+        const normalizedPath = alarmPath.replace(/\\/g, '/')
+        // Tenta com protocolo app:// primeiro
+        if (normalizedPath.includes('public')) {
+          const relativePath = normalizedPath.split('public')[1]
+          audioUrls.push(`app://public${relativePath}`)
+        }
+        audioUrls.push(`file:///${normalizedPath}`)
+        // Fallback: caminho relativo
+        audioUrls.push('/alarm-1.mp3')
+        audioUrls.push('app://public/alarm-1.mp3')
+      }
+      
+      // Tenta tocar com cada URL até uma funcionar
+      const tryPlayAudio = (urls: string[], index: number = 0): void => {
+        if (index >= urls.length) {
+          console.error('❌ Todas as tentativas de tocar o áudio falharam')
+          return
+        }
+        
+        const audioUrl = urls[index]
+        console.log(`   Tentando tocar áudio (tentativa ${index + 1}/${urls.length}): ${audioUrl}`)
+        
+        const audio = new Audio(audioUrl)
+        audio.volume = 1.0
+        audio.loop = false
+        
+        // Adiciona o listener ANTES de tocar para garantir que seja capturado
+        audio.addEventListener('ended', () => {
+          console.log('🔔 Áudio terminou, tocando novamente imediatamente...')
+          // Usa apenas a ref para verificar se o alarme ainda está ativo
+          const alarmPath = currentAlarmPathRef.current
+          if (alarmPath) {
+            // Toca imediatamente, sem esperar
+            playAlarmSound(alarmPath)
+          } else {
+            console.log('🔕 Caminho do alarme não encontrado, não tocando novamente')
+          }
+        })
+        
+        audio.play().then(() => {
+          console.log(`✅ Áudio tocando com: ${audioUrl}`)
+          alarmAudioRef.current = audio
+        }).catch(error => {
+          console.warn(`   Falhou: ${audioUrl} - ${error.message}`)
+          // Tenta próxima URL
+          tryPlayAudio(urls, index + 1)
+        })
+      }
+      
+      tryPlayAudio(audioUrls)
+    } catch (error) {
+      console.error('❌ Erro ao criar elemento de áudio:', error)
+    }
+  }
+
+  // Função para parar o alarme
+  const stopAlarmSound = (): void => {
+    if (alarmAudioRef.current) {
+      alarmAudioRef.current.pause()
+      alarmAudioRef.current.currentTime = 0
+      // Remove todos os listeners antes de limpar
+      const audio = alarmAudioRef.current
+      audio.removeEventListener('ended', () => {})
+      alarmAudioRef.current = null
+    }
+    if (alarmIntervalRef.current) {
+      clearTimeout(alarmIntervalRef.current)
+      alarmIntervalRef.current = null
+    }
+  }
+
   // Atualiza tempo restante e marca eventos concluídos
   useEffect(() => {
-    if (events.length === 0) return
+    if (events.length === 0) {
+      setTimeRemaining(new Map())
+      completedEventsRef.current.clear()
+      return
+    }
 
     const updateTimeRemaining = () => {
       const now = new Date()
       const newTimeRemaining = new Map<string, string>()
+      const eventsToUpdate: Array<{ id: string; event: ClockedEvent }> = []
 
-      setEvents(prevEvents => {
-        return prevEvents.map(event => {
-          if (!event.targetDateTime) {
-            newTimeRemaining.set(event.id, '')
-            return event
+      events.forEach(event => {
+        if (!event.targetDateTime) {
+          newTimeRemaining.set(event.id, '')
+          return
+        }
+
+        const diff = event.targetDateTime.getTime() - now.getTime()
+
+        if (diff <= 0) {
+          // Evento passou - marca como concluído
+          if (!event.completed && !completedEventsRef.current.has(event.id)) {
+            completedEventsRef.current.add(event.id)
+            eventsToUpdate.push({ id: event.id, event })
+            // Atualiza no backend (sem esperar)
+            window.api.updateEvent(event.id, {
+              title: event.title,
+              time: event.time,
+              date: event.date,
+              repeat: event.repeat,
+              actions: event.actions,
+              completed: true
+            }).catch(console.error)
           }
-
-          const diff = event.targetDateTime.getTime() - now.getTime()
-
-          if (diff <= 0) {
-            // Evento passou - marca como concluído
-            if (!event.completed) {
-              // Atualiza no backend (sem esperar)
-              window.api.updateEvent(event.id, {
-                title: event.title,
-                time: event.time,
-                date: event.date,
-                repeat: event.repeat,
-                actions: event.actions,
-                completed: true
-              }).catch(console.error)
-            }
-            newTimeRemaining.set(event.id, 'Concluído')
-            return { ...event, completed: true }
-          }
-
+          newTimeRemaining.set(event.id, 'Concluído')
+        } else {
           // Calcula tempo restante
           const hours = Math.floor(diff / (1000 * 60 * 60))
           const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
@@ -113,9 +227,18 @@ function App(): JSX.Element {
           }
 
           newTimeRemaining.set(event.id, timeStr)
-          return event
-        })
+        }
       })
+
+      // Atualiza eventos concluídos apenas se houver mudanças
+      if (eventsToUpdate.length > 0) {
+        setEvents(prevEvents => {
+          return prevEvents.map(event => {
+            const toUpdate = eventsToUpdate.find(e => e.id === event.id)
+            return toUpdate ? { ...event, completed: true } : event
+          })
+        })
+      }
 
       setTimeRemaining(newTimeRemaining)
     }
@@ -285,7 +408,21 @@ function App(): JSX.Element {
   }
 
   const handleClose = (): void => {
-    window.api.windowClose()
+    setShowCloseConfirm(true)
+  }
+
+  const handleCloseConfirm = async (): Promise<void> => {
+    setShowCloseConfirm(false)
+    await window.api.windowCloseConfirm()
+  }
+
+  const handleMinimizeToTray = async (): Promise<void> => {
+    setShowCloseConfirm(false)
+    await window.api.windowMinimizeToTray()
+  }
+
+  const handleCancelClose = (): void => {
+    setShowCloseConfirm(false)
   }
 
   const handleMinimize = (): void => {
@@ -296,7 +433,7 @@ function App(): JSX.Element {
     <div className="app">
       <div className="title-bar">
         <div className="title-bar-drag-region">
-          <span className="title-text">Clocked</span>
+          <span className="title-text">Uclocked</span>
         </div>
         <div className="title-bar-controls">
           <button className="title-bar-button minimize" onClick={handleMinimize} title="Minimizar">
@@ -318,7 +455,7 @@ function App(): JSX.Element {
             <p id="current-date">{currentDate}</p>
             <h2 id="current-time">{currentTime}</h2>
           </div>
-          <div style={{ fontWeight: 800, color: 'var(--primary)' }}>CLOCKED</div>
+          <div style={{ fontWeight: 800, color: 'var(--primary)' }}>UCLOCKED</div>
         </header>
 
 
@@ -458,6 +595,43 @@ function App(): JSX.Element {
             <div className="notification-content">
               <i className={`ph ${message.type === 'success' ? 'ph-check-circle' : 'ph-warning-circle'}`}></i>
               <span>{message.text}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Toast de Confirmação de Fechar */}
+        {showCloseConfirm && (
+          <div className="close-confirm-toast">
+            <div className="close-confirm-content">
+              <div className="close-confirm-icon">
+                <i className="ph ph-warning"></i>
+              </div>
+              <div className="close-confirm-text">
+                <div className="close-confirm-title">Fechar Uclocked?</div>
+                <div className="close-confirm-message">O aplicativo continuará rodando em segundo plano</div>
+              </div>
+              <div className="close-confirm-buttons">
+                <button
+                  className="close-confirm-btn minimize-btn"
+                  onClick={handleMinimizeToTray}
+                >
+                  <i className="ph ph-tray"></i>
+                  Minimizar
+                </button>
+                <button
+                  className="close-confirm-btn close-btn"
+                  onClick={handleCloseConfirm}
+                >
+                  <i className="ph ph-x"></i>
+                  Fechar
+                </button>
+                <button
+                  className="close-confirm-btn cancel-btn"
+                  onClick={handleCancelClose}
+                >
+                  Cancelar
+                </button>
+              </div>
             </div>
           </div>
         )}

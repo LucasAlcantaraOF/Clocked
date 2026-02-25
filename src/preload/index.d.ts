@@ -33,10 +33,13 @@ declare global {
       // Window controls
       windowClose: () => Promise<void>
       windowMinimize: () => Promise<void>
+      windowCloseConfirm: () => Promise<void>
+      windowMinimizeToTray: () => Promise<void>
+      windowRestore: () => Promise<void>
       
       // Alarm control
       stopAlarm: (actionId: string) => Promise<{ success: boolean; message: string }>
-      onAlarmTriggered: (callback: (data: { actionId: string; title: string }) => void) => void
+      onAlarmTriggered: (callback: (data: { actionId: string; title: string; alarmPath?: string }) => void) => void
       onAlarmStopped: (callback: (data: { actionId: string }) => void) => void
       removeAlarmListeners: () => void
     }

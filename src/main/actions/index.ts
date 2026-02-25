@@ -1,4 +1,4 @@
-// Sistema de Actions - Clocked
+// Sistema de Actions - Uclocked
 // Estrutura escalável para diferentes tipos de ações
 
 export interface ActionConfig {

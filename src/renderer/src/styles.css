@@ -947,6 +947,126 @@ body {
   transform: scale(0.98);
 }
 
+/* Close Confirm Toast */
+.close-confirm-toast {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10002;
+  animation: fadeInScale 0.3s ease-out;
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.close-confirm-content {
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 20px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  min-width: 380px;
+  max-width: 450px;
+}
+
+.close-confirm-icon {
+  width: 56px;
+  height: 56px;
+  background: rgba(245, 158, 11, 0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: var(--error);
+  flex-shrink: 0;
+}
+
+.close-confirm-text {
+  text-align: center;
+  width: 100%;
+}
+
+.close-confirm-title {
+  font-weight: 800;
+  font-size: 1.2rem;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.close-confirm-message {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.close-confirm-buttons {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.close-confirm-btn {
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.minimize-btn {
+  background: var(--primary);
+  color: white;
+}
+
+.minimize-btn:hover {
+  background: rgba(99, 102, 241, 0.8);
+  transform: scale(1.02);
+}
+
+.close-btn {
+  background: var(--danger);
+  color: white;
+}
+
+.close-btn:hover {
+  background: rgba(239, 68, 68, 0.8);
+  transform: scale(1.02);
+}
+
+.cancel-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: scale(1.02);
+}
+
 /* Fonts and Icons são carregados no index.html */
 
 
