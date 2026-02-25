@@ -12,6 +12,7 @@ export interface ClockedEvent {
   actions: ActionConfig[]
   createdAt: Date
   targetDateTime?: Date
+  completed?: boolean // Flag para eventos concluídos
 }
 
 class EventManager {
@@ -127,7 +128,15 @@ class EventManager {
         const action = actionRegistry.get(actionConfig.type)
         if (action) {
           try {
-            const result = await action.execute(actionConfig, event.targetDateTime)
+            // Adiciona o título do evento aos params da action
+            const configWithTitle = {
+              ...actionConfig,
+              params: {
+                ...actionConfig.params,
+                title: event.title
+              }
+            }
+            const result = await action.execute(configWithTitle, event.targetDateTime)
             console.log(`   ${action.name}: ${result.success ? '✅' : '❌'} ${result.message}`)
           } catch (error) {
             console.error(`   ❌ Erro ao executar ${action.name}:`, error)

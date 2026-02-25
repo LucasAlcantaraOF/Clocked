@@ -9,6 +9,7 @@ export interface ClockedEvent {
   actions: Array<{ id: string; type: string; params?: Record<string, any> }>
   createdAt: Date
   targetDateTime?: Date
+  completed?: boolean
 }
 
 declare global {
@@ -32,6 +33,12 @@ declare global {
       // Window controls
       windowClose: () => Promise<void>
       windowMinimize: () => Promise<void>
+      
+      // Alarm control
+      stopAlarm: (actionId: string) => Promise<{ success: boolean; message: string }>
+      onAlarmTriggered: (callback: (data: { actionId: string; title: string }) => void) => void
+      onAlarmStopped: (callback: (data: { actionId: string }) => void) => void
+      removeAlarmListeners: () => void
     }
   }
 }

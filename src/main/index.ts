@@ -7,10 +7,12 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { actionRegistry } from './actions'
 import { shutdownAction } from './actions/shutdown.action'
 import { restartAction } from './actions/restart.action'
+import { alarmAction } from './actions/alarm.action'
 
 // Registrar actions disponíveis (deve ser feito antes de importar EventManager)
 actionRegistry.register(shutdownAction)
 actionRegistry.register(restartAction)
+actionRegistry.register(alarmAction)
 
 // Agora importar EventManager (que já terá acesso às actions registradas)
 import { eventManager, ClockedEvent } from './events/EventManager'
@@ -132,6 +134,12 @@ app.whenReady().then(() => {
     if (mainWindow) {
       mainWindow.minimize()
     }
+  })
+
+  // Handler para parar alarme
+  ipcMain.handle('stop-alarm', (_, actionId: string) => {
+    alarmAction.stopAlarm(actionId)
+    return { success: true, message: 'Alarme parado' }
   })
 
   createWindow()

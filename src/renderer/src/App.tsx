@@ -8,6 +8,7 @@ interface ActionOption {
 }
 
 const AVAILABLE_ACTIONS: ActionOption[] = [
+  { type: 'alarm', name: 'Alarme', icon: 'ph-bell' },
   { type: 'shutdown', name: 'Desligar', icon: 'ph-power' },
   { type: 'restart', name: 'Reiniciar', icon: 'ph-arrow-clockwise' }
   // Futuras actions podem ser adicionadas aqui
@@ -19,13 +20,16 @@ function App(): JSX.Element {
   const [task, setTask] = useState<string>('')
   const [time, setTime] = useState<string>('')
   const [repeat, setRepeat] = useState<string>('')
-  const [selectedActions, setSelectedActions] = useState<string[]>(['shutdown'])
+  const [selectedActions, setSelectedActions] = useState<string[]>(['alarm'])
   const [events, setEvents] = useState<ClockedEvent[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [isCanceling, setIsCanceling] = useState(false)
+  const [timeRemaining, setTimeRemaining] = useState<Map<string, string>>(new Map())
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' | '' }>({
     text: '',
     type: ''
   })
+  const [activeAlarm, setActiveAlarm] = useState<{ actionId: string; title: string } | null>(null)
 
   useEffect(() => {
     // Atualiza relógio
@@ -44,8 +48,83 @@ function App(): JSX.Element {
     // Carrega eventos salvos
     loadEvents()
 
-    return () => clearInterval(interval)
+    // Listener para alarme tocando
+    window.api.onAlarmTriggered((data) => {
+      setActiveAlarm({ actionId: data.actionId, title: data.title })
+    })
+
+    // Listener para alarme parado
+    window.api.onAlarmStopped(() => {
+      setActiveAlarm(null)
+    })
+
+    return () => {
+      clearInterval(interval)
+      window.api.removeAlarmListeners()
+    }
   }, [])
+
+  // Atualiza tempo restante e marca eventos concluídos
+  useEffect(() => {
+    if (events.length === 0) return
+
+    const updateTimeRemaining = () => {
+      const now = new Date()
+      const newTimeRemaining = new Map<string, string>()
+
+      setEvents(prevEvents => {
+        return prevEvents.map(event => {
+          if (!event.targetDateTime) {
+            newTimeRemaining.set(event.id, '')
+            return event
+          }
+
+          const diff = event.targetDateTime.getTime() - now.getTime()
+
+          if (diff <= 0) {
+            // Evento passou - marca como concluído
+            if (!event.completed) {
+              // Atualiza no backend (sem esperar)
+              window.api.updateEvent(event.id, {
+                title: event.title,
+                time: event.time,
+                date: event.date,
+                repeat: event.repeat,
+                actions: event.actions,
+                completed: true
+              }).catch(console.error)
+            }
+            newTimeRemaining.set(event.id, 'Concluído')
+            return { ...event, completed: true }
+          }
+
+          // Calcula tempo restante
+          const hours = Math.floor(diff / (1000 * 60 * 60))
+          const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+          const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+
+          let timeStr = ''
+          if (hours > 0) {
+            timeStr = `${hours}h ${minutes}m`
+          } else if (minutes > 0) {
+            timeStr = `${minutes}m ${seconds}s`
+          } else {
+            timeStr = `${seconds}s`
+          }
+
+          newTimeRemaining.set(event.id, timeStr)
+          return event
+        })
+      })
+
+      setTimeRemaining(newTimeRemaining)
+    }
+
+    updateTimeRemaining()
+    const interval = setInterval(updateTimeRemaining, 1000)
+
+    return () => clearInterval(interval)
+  }, [events])
 
   const loadEvents = async (): Promise<void> => {
     try {
@@ -58,9 +137,10 @@ function App(): JSX.Element {
 
   const showMessage = (text: string, type: 'success' | 'error'): void => {
     setMessage({ text, type })
+    // Remove após 3 segundos (2.6s de exibição + 0.4s de animação de saída)
     setTimeout(() => {
       setMessage({ text: '', type: '' })
-    }, 5000)
+    }, 3000)
   }
 
   const saveNode = async (): Promise<void> => {
@@ -171,8 +251,17 @@ function App(): JSX.Element {
     setTask('')
     setTime('')
     setRepeat('')
-    setSelectedActions(['shutdown'])
+    setSelectedActions(['alarm'])
     setEditingId(null)
+    setIsCanceling(false)
+  }
+
+  const handleCancelEdit = (): void => {
+    setIsCanceling(true)
+    // Aguarda a animação de saída antes de limpar
+    setTimeout(() => {
+      clearInputs()
+    }, 300) // Tempo da animação
   }
 
   const toggleAction = (actionType: string): void => {
@@ -232,9 +321,6 @@ function App(): JSX.Element {
           <div style={{ fontWeight: 800, color: 'var(--primary)' }}>CLOCKED</div>
         </header>
 
-        {message.text && (
-          <div className={`message message-${message.type}`}>{message.text}</div>
-        )}
 
         <div className="creator-bubble">
           <div className="input-item" style={{ width: '200px' }}>
@@ -292,6 +378,15 @@ function App(): JSX.Element {
           >
             <i className={`ph-bold ${editingId ? 'ph-check' : 'ph-plus'}`}></i>
           </button>
+          {editingId && (
+            <button
+              className={`cancel-edit-btn ${isCanceling ? 'exiting' : ''}`}
+              onClick={handleCancelEdit}
+              title="Cancelar edição"
+            >
+              <i className="ph ph-x"></i>
+            </button>
+          )}
         </div>
 
         <div className={`timeline-container ${events.length === 0 ? 'empty' : ''}`} id="timeline">
@@ -301,8 +396,12 @@ function App(): JSX.Element {
               <p>Nenhum evento agendado</p>
             </div>
           ) : (
-            events.map((event) => (
-              <div key={event.id} className="event-node">
+            events.map((event) => {
+              const remaining = timeRemaining.get(event.id) || ''
+              const isCompleted = event.completed || false
+              
+              return (
+              <div key={event.id} className={`event-node ${isCompleted ? 'completed' : ''}`}>
                 <div className="controls">
                   <button
                     className="control-btn"
@@ -321,6 +420,19 @@ function App(): JSX.Element {
                 </div>
                 <div className="node-time">{event.time}</div>
                 <div className="node-label">{event.title}</div>
+                {remaining && (
+                  <div className={`node-countdown ${isCompleted ? 'completed' : ''}`}>
+                    {isCompleted ? (
+                      <>
+                        <i className="ph ph-check-circle"></i> Concluído
+                      </>
+                    ) : (
+                      <>
+                        <i className="ph ph-clock-countdown"></i> {remaining}
+                      </>
+                    )}
+                  </div>
+                )}
                 <div className="tag-group">
                   {event.actions.map((action, idx) => (
                     <div key={idx} className="tag active">
@@ -335,9 +447,45 @@ function App(): JSX.Element {
                   )}
                 </div>
               </div>
-            ))
+              )
+            })
           )}
         </div>
+
+        {/* Toast de Mensagem (Evento criado/modificado/etc) */}
+        {message.text && (
+          <div className={`notification-toast notification-${message.type}`}>
+            <div className="notification-content">
+              <i className={`ph ${message.type === 'success' ? 'ph-check-circle' : 'ph-warning-circle'}`}></i>
+              <span>{message.text}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Toast de Alarme */}
+        {activeAlarm && (
+          <div className="alarm-toast">
+            <div className="alarm-toast-content">
+              <div className="alarm-toast-icon">
+                <i className="ph ph-bell-ringing"></i>
+              </div>
+              <div className="alarm-toast-text">
+                <div className="alarm-toast-title">Alarme!</div>
+                <div className="alarm-toast-message">{activeAlarm.title}</div>
+              </div>
+              <button
+                className="alarm-toast-stop"
+                onClick={async () => {
+                  await window.api.stopAlarm(activeAlarm.actionId)
+                  setActiveAlarm(null)
+                }}
+              >
+                <i className="ph ph-stop"></i>
+                Parar
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

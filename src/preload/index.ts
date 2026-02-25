@@ -19,7 +19,22 @@ const api = {
   
   // Window controls
   windowClose: () => ipcRenderer.invoke('window-close'),
-  windowMinimize: () => ipcRenderer.invoke('window-minimize')
+  windowMinimize: () => ipcRenderer.invoke('window-minimize'),
+  
+  // Alarm control
+  stopAlarm: (actionId: string) => ipcRenderer.invoke('stop-alarm', actionId),
+  
+  // IPC listeners
+  onAlarmTriggered: (callback: (data: { actionId: string; title: string }) => void) => {
+    ipcRenderer.on('alarm-triggered', (_event, data) => callback(data))
+  },
+  onAlarmStopped: (callback: (data: { actionId: string }) => void) => {
+    ipcRenderer.on('alarm-stopped', (_event, data) => callback(data))
+  },
+  removeAlarmListeners: () => {
+    ipcRenderer.removeAllListeners('alarm-triggered')
+    ipcRenderer.removeAllListeners('alarm-stopped')
+  }
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

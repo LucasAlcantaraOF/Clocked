@@ -229,37 +229,79 @@ body {
   font-weight: 400;
 }
 
-.message {
-  padding: 12px 16px;
-  border-radius: 8px;
-  margin-bottom: 24px;
-  font-size: 14px;
-  font-weight: 500;
-  animation: slideDown 0.3s ease-out;
-  text-align: center;
+/* Notification Toast - Canto superior direito */
+.notification-toast {
+  position: fixed;
+  top: 50px;
+  right: 20px;
+  z-index: 10001;
+  animation: slideInRight 0.4s ease-out, slideOutRight 0.4s ease-in 2.6s forwards;
+  pointer-events: none;
 }
 
-@keyframes slideDown {
+@keyframes slideInRight {
   from {
     opacity: 0;
-    transform: translateY(-10px);
+    transform: translateX(100px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
   }
 }
 
-.message-success {
-  background: rgba(16, 185, 129, 0.15);
-  color: var(--success);
-  border: 1px solid rgba(16, 185, 129, 0.3);
+@keyframes slideOutRight {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100px);
+  }
 }
 
-.message-error {
-  background: rgba(245, 158, 11, 0.15);
+.notification-content {
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  min-width: 300px;
+  max-width: 500px;
+}
+
+.notification-content i {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.notification-content span {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.notification-success .notification-content {
+  border-color: var(--success);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.notification-success .notification-content i {
+  color: var(--success);
+}
+
+.notification-error .notification-content {
+  border-color: var(--error);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.notification-error .notification-content i {
   color: var(--error);
-  border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
 .form-section {
@@ -563,6 +605,56 @@ body {
   color: white;
 }
 
+.cancel-edit-btn {
+  min-width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.15);
+  border: 2px solid #ef4444;
+  color: #ef4444;
+  font-size: 20px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.2);
+  flex-shrink: 0;
+  margin-left: 10px;
+  animation: slideInRight 0.3s ease-out;
+}
+
+.cancel-edit-btn:hover {
+  transform: scale(1.1);
+  background: rgba(239, 68, 68, 0.25);
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+}
+
+.cancel-edit-btn.exiting {
+  animation: slideOutRight 0.3s ease-in forwards;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+}
+
 /* Timeline Area */
 .timeline-container {
   flex: 1;
@@ -622,8 +714,43 @@ body {
 .node-label {
   font-weight: 800;
   font-size: 1.2rem;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
   color: #fff;
+}
+
+.node-countdown {
+  font-size: 0.85rem;
+  color: var(--primary);
+  margin-top: 16px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.node-countdown.completed {
+  color: var(--success);
+}
+
+.event-node.completed {
+  opacity: 0.7;
+  border-color: var(--success);
+}
+
+.event-node.completed .node-time,
+.event-node.completed .node-label {
+  opacity: 0.6;
+}
+
+.event-node.completed .controls {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.event-node.completed .control-btn {
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
 
 .tag-group {
@@ -657,10 +784,14 @@ body {
   gap: 10px;
   opacity: 0;
   transition: 0.3s;
+  z-index: 100;
+  pointer-events: none;
 }
 
-.event-node:hover .controls {
+.event-node:hover .controls,
+.event-node.completed .controls {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .control-btn {
@@ -704,6 +835,116 @@ body {
   margin-top: 0;
   font-size: 1rem;
   font-weight: 500;
+}
+
+/* Alarm Toast */
+.alarm-toast {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  z-index: 10000;
+  animation: slideInUp 0.3s ease-out;
+}
+
+@keyframes slideInUp {
+  from {
+    transform: translateY(100px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.alarm-toast-content {
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  border: 2px solid var(--primary);
+  border-radius: 20px;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 20px 60px rgba(99, 102, 241, 0.4);
+  min-width: 320px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 20px 60px rgba(99, 102, 241, 0.4);
+  }
+  50% {
+    box-shadow: 0 20px 60px rgba(99, 102, 241, 0.6);
+  }
+}
+
+.alarm-toast-icon {
+  width: 48px;
+  height: 48px;
+  background: var(--primary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: white;
+  flex-shrink: 0;
+  animation: ring 1s ease-in-out infinite;
+}
+
+@keyframes ring {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  10%, 30% {
+    transform: rotate(-10deg);
+  }
+  20%, 40% {
+    transform: rotate(10deg);
+  }
+}
+
+.alarm-toast-text {
+  flex: 1;
+}
+
+.alarm-toast-title {
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: var(--primary);
+  margin-bottom: 4px;
+}
+
+.alarm-toast-message {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.alarm-toast-stop {
+  background: var(--danger);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.alarm-toast-stop:hover {
+  background: var(--danger-hover);
+  transform: scale(1.05);
+}
+
+.alarm-toast-stop:active {
+  transform: scale(0.98);
 }
 
 /* Fonts and Icons são carregados no index.html */
