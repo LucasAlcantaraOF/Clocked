@@ -49,4 +49,8 @@ export const actionRegistry = new ActionRegistry()
 export { ShutdownAction, shutdownAction } from './shutdown.action'
 export { RestartAction, restartAction } from './restart.action'
 export { AlarmAction, alarmAction } from './alarm.action'
+export { LockScreenAction, lockScreenAction } from './lock-screen.action'
+export { DoNotDisturbAction, doNotDisturbAction } from './do-not-disturb.action'
+export { HibernateAction, hibernateAction } from './hibernate.action'
+export { OpenUrlAction, openUrlAction } from './open-url.action'
 

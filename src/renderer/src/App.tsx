@@ -7,12 +7,23 @@ interface ActionOption {
   icon: string
 }
 
-const AVAILABLE_ACTIONS: ActionOption[] = [
+// Actions principais (sempre visíveis como botões)
+const PRIMARY_ACTIONS: ActionOption[] = [
   { type: 'alarm', name: 'Alarme', icon: 'ph-bell' },
   { type: 'shutdown', name: 'Desligar', icon: 'ph-power' },
   { type: 'restart', name: 'Reiniciar', icon: 'ph-arrow-clockwise' }
-  // Futuras actions podem ser adicionadas aqui
 ]
+
+// Actions secundárias (no dropdown)
+const SECONDARY_ACTIONS: ActionOption[] = [
+  { type: 'lock-screen', name: 'Bloquear Tela', icon: 'ph-lock' },
+  { type: 'do-not-disturb', name: 'Modo Não Perturbe', icon: 'ph-moon' },
+  { type: 'hibernate', name: 'Hibernar', icon: 'ph-bed' },
+  { type: 'open-url', name: 'Abrir URL', icon: 'ph-globe' }
+]
+
+// Todas as actions combinadas
+const AVAILABLE_ACTIONS: ActionOption[] = [...PRIMARY_ACTIONS, ...SECONDARY_ACTIONS]
 
 function App(): JSX.Element {
   const [currentDate, setCurrentDate] = useState<string>('')
@@ -31,10 +42,12 @@ function App(): JSX.Element {
   })
   const [activeAlarm, setActiveAlarm] = useState<{ actionId: string; title: string; alarmPath?: string } | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+  const [actionsDropdownOpen, setActionsDropdownOpen] = useState(false)
   const completedEventsRef = useRef<Set<string>>(new Set())
   const alarmAudioRef = useRef<HTMLAudioElement | null>(null)
   const alarmIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const currentAlarmPathRef = useRef<string | null>(null)
+  const actionsDropdownRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     // Atualiza relógio
@@ -73,12 +86,27 @@ function App(): JSX.Element {
       currentAlarmPathRef.current = null
     })
 
+    // Fecha popup ao clicar fora
+    const handleClickOutside = (event: MouseEvent): void => {
+      if (actionsDropdownRef.current && !actionsDropdownRef.current.contains(event.target as Node)) {
+        setActionsDropdownOpen(false)
+      }
+    }
+
+    if (actionsDropdownOpen) {
+      // Usa click ao invés de mousedown para permitir que o onClick dos chips seja processado
+      setTimeout(() => {
+        document.addEventListener('click', handleClickOutside)
+      }, 0)
+    }
+
     return () => {
       clearInterval(interval)
       window.api.removeAlarmListeners()
       stopAlarmSound()
+      document.removeEventListener('click', handleClickOutside)
     }
-  }, [])
+  }, [actionsDropdownOpen])
 
   // Função para tocar o alarme
   const playAlarmSound = (alarmPath: string): void => {
@@ -493,18 +521,48 @@ function App(): JSX.Element {
           </div>
           <div className="input-item" style={{ minWidth: '150px' }}>
             <label>Actions</label>
-            <div className="actions-selector">
-              {AVAILABLE_ACTIONS.map(action => (
+            <div className="actions-selector-wrapper" ref={actionsDropdownRef}>
+              <div className="actions-selector">
+                {PRIMARY_ACTIONS.map(action => (
+                  <button
+                    key={action.type}
+                    type="button"
+                    className={`action-chip ${selectedActions.includes(action.type) ? 'active' : ''}`}
+                    onClick={() => toggleAction(action.type)}
+                    title={action.name}
+                  >
+                    <i className={`ph ${getActionIcon(action.type)}`}></i>
+                  </button>
+                ))}
                 <button
-                  key={action.type}
                   type="button"
-                  className={`action-chip ${selectedActions.includes(action.type) ? 'active' : ''}`}
-                  onClick={() => toggleAction(action.type)}
-                  title={action.name}
+                  className="actions-dropdown-arrow-btn"
+                  onClick={() => setActionsDropdownOpen(!actionsDropdownOpen)}
+                  title="Mais actions"
                 >
-                  <i className={`ph ${getActionIcon(action.type)}`}></i>
+                  <i className={`ph ph-caret-down actions-dropdown-arrow ${actionsDropdownOpen ? 'open' : ''}`}></i>
                 </button>
-              ))}
+              </div>
+              {actionsDropdownOpen && (
+                <div className="actions-popup">
+                  {SECONDARY_ACTIONS.map(action => {
+                    const isSelected = selectedActions.includes(action.type)
+                    return (
+                      <button
+                        key={action.type}
+                        type="button"
+                        className={`action-chip ${isSelected ? 'active' : ''}`}
+                        onClick={() => {
+                          toggleAction(action.type)
+                        }}
+                        title={action.name}
+                      >
+                        <i className={`ph ${getActionIcon(action.type)}`}></i>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
           <button

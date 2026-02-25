@@ -9,11 +9,19 @@ import { actionRegistry } from './actions'
 import { shutdownAction } from './actions/shutdown.action'
 import { restartAction } from './actions/restart.action'
 import { alarmAction } from './actions/alarm.action'
+import { lockScreenAction } from './actions/lock-screen.action'
+import { doNotDisturbAction } from './actions/do-not-disturb.action'
+import { hibernateAction } from './actions/hibernate.action'
+import { openUrlAction } from './actions/open-url.action'
 
 // Registrar actions disponíveis (deve ser feito antes de importar EventManager)
 actionRegistry.register(shutdownAction)
 actionRegistry.register(restartAction)
 actionRegistry.register(alarmAction)
+actionRegistry.register(lockScreenAction)
+actionRegistry.register(doNotDisturbAction)
+actionRegistry.register(hibernateAction)
+actionRegistry.register(openUrlAction)
 
 // Agora importar EventManager (que já terá acesso às actions registradas)
 import { eventManager, ClockedEvent } from './events/EventManager'
