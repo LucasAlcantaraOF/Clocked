@@ -196,7 +196,9 @@ Este projeto é de código aberto e está disponível sob a licença MIT.
 
 ## 👤 Autor
 
-Desenvolvido por mim (Lucas Alcântara) para facilitar o agendamento de tarefas e ações automatizadas.
+Desenvolvido por mim, Lucas Alcântara, para facilitar o agendamento de tarefas e ações automatizadas.
+
+"Tudo começou quando eu queria assistir filme da cama pelo computador, mas não queria gastar 5 segundos levantando da cama, fiz um projeto que demorou mais de 5 segundos para automatizar meu problema (risos)"
 
 ---
 
