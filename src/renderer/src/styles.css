@@ -720,18 +720,20 @@ body {
 .timeline-container {
   flex: 1;
   padding: 20px 40px 50px;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 20px;
-  overflow-x: auto;
-  overflow-y: visible;
-  align-items: flex-start;
+  overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
   margin-top: 10px;
 }
 
 .timeline-container.empty {
+  display: flex;
   align-items: center;
   justify-content: center;
+  grid-template-columns: none;
 }
 
 .timeline-container::-webkit-scrollbar {

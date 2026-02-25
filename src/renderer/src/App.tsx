@@ -598,13 +598,15 @@ function App(): JSX.Element {
               return (
               <div key={event.id} className={`event-node ${isCompleted ? 'completed' : ''}`}>
                 <div className="controls">
-                  <button
-                    className="control-btn"
-                    onClick={() => editNode(event.id)}
-                    title="Editar"
-                  >
-                    <i className="ph ph-pencil-simple"></i>
-                  </button>
+                  {!isCompleted && (
+                    <button
+                      className="control-btn"
+                      onClick={() => editNode(event.id)}
+                      title="Editar"
+                    >
+                      <i className="ph ph-pencil-simple"></i>
+                    </button>
+                  )}
                   <button
                     className="control-btn del"
                     onClick={() => deleteNode(event.id)}

@@ -101,10 +101,10 @@ function createSystemTray(): void {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 900,
+    width: 1015,
     height: 700,
-    minWidth: 600,
-    minHeight: 550,
+    minWidth: 1015,
+    minHeight: 700,
     show: false,
     frame: false,
     backgroundColor: '#1a1a1a',
