@@ -223,22 +223,29 @@ function App(): JSX.Element {
 
         const diff = event.targetDateTime.getTime() - now.getTime()
 
-        if (diff <= 0) {
-          // Evento passou - marca como concluído
-          if (!event.completed && !completedEventsRef.current.has(event.id)) {
-            completedEventsRef.current.add(event.id)
-            eventsToUpdate.push({ id: event.id, event })
-            // Atualiza no backend (sem esperar)
-            window.api.updateEvent(event.id, {
-              title: event.title,
-              time: event.time,
-              date: event.date,
-              repeat: event.repeat,
-              actions: event.actions,
-              completed: true
-            }).catch(console.error)
-          }
-          newTimeRemaining.set(event.id, 'Concluído')
+          if (diff <= 0) {
+            // Evento passou - marca como concluído
+            if (!event.completed && !completedEventsRef.current.has(event.id)) {
+              completedEventsRef.current.add(event.id)
+              eventsToUpdate.push({ id: event.id, event })
+              // Atualiza no backend e recarrega eventos para manter sincronização
+              window.api.updateEvent(event.id, {
+                title: event.title,
+                time: event.time,
+                date: event.date,
+                repeat: event.repeat,
+                actions: event.actions,
+                completed: true
+              }).then(() => {
+                // Recarrega eventos após atualização bem-sucedida
+                loadEvents().catch(console.error)
+              }).catch((error) => {
+                console.error('Erro ao marcar evento como concluído:', error)
+                // Remove do ref se falhou para tentar novamente
+                completedEventsRef.current.delete(event.id)
+              })
+            }
+            newTimeRemaining.set(event.id, 'Concluído')
         } else {
           // Calcula tempo restante
           const hours = Math.floor(diff / (1000 * 60 * 60))

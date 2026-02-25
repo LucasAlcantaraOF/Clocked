@@ -175,7 +175,41 @@ class EventManager {
       // Salva dados do evento existente antes de cancelar
       const savedCreatedAt = existingEvent.createdAt
 
-      // Cancela apenas os timers, mas mantém o evento no Map temporariamente
+      // Se está apenas marcando como concluído, apenas atualiza a flag sem reagendar
+      if (eventData.completed === true && existingEvent.completed !== true) {
+        const updatedEvent: ClockedEvent = {
+          ...existingEvent,
+          ...eventData,
+          id: eventId,
+          createdAt: savedCreatedAt,
+          // Mantém o targetDateTime original
+          targetDateTime: existingEvent.targetDateTime
+        }
+
+        // Cancela timers se existirem
+        const timer = this.eventTimers.get(eventId)
+        if (timer) {
+          clearTimeout(timer)
+          this.eventTimers.delete(eventId)
+        }
+
+        const repeatTimer = this.repeatTimers.get(eventId)
+        if (repeatTimer) {
+          clearTimeout(repeatTimer)
+          this.repeatTimers.delete(eventId)
+        }
+
+        // Atualiza o evento no Map sem reagendar
+        this.events.set(eventId, updatedEvent)
+
+        return {
+          success: true,
+          event: updatedEvent,
+          message: 'Evento marcado como concluído'
+        }
+      }
+
+      // Para outras atualizações, cancela timers e actions
       const timer = this.eventTimers.get(eventId)
       if (timer) {
         clearTimeout(timer)
